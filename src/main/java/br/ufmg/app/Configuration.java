@@ -22,6 +22,7 @@ public class Configuration {
     private Path repositoryPath;
     private Path runtimeControllersPath;
     private Path logsDirPath;
+    private Path screenshotsDirPath;
 
     public Configuration(String configFilePathStr) {
         // Get configuration file and the propoer filepaths to get the path of the
@@ -48,6 +49,7 @@ public class Configuration {
             this.readRepositoryPath(configObject);
             this.readRuntimeControllersPath(configObject);
             this.readGeckodriverBinaryPath(configObject);
+            this.readScreenshotsDirPath(configObject);
 
             // Optional parameters
             this.readLogsDirPath(configObject);
@@ -99,6 +101,11 @@ public class Configuration {
     private void readLogsDirPath(JSONObject configObject) throws JSONException {
         Path specifiedLogsDir = Paths.get(configObject.optString("logsDirPath"));
         this.logsDirPath = readRelativeOrAbsolutePath(specifiedLogsDir);
+    }
+
+    private void readScreenshotsDirPath(JSONObject configObject) throws JSONException {
+        Path specifiedAttribute = Paths.get(configObject.getString("screenshotsPath"));
+        this.screenshotsDirPath = readRelativeOrAbsolutePath(specifiedAttribute);
     }
 
     private void readWhiteListPath(JSONObject configObject) throws JSONException {
@@ -171,4 +178,7 @@ public class Configuration {
         return this.runtimeControllersPath;
     }
 
+    public Path getScreenshotsDirPath() {
+        return this.screenshotsDirPath;
+    }
 }

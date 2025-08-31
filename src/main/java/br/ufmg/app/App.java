@@ -176,7 +176,8 @@ public class App {
 								i, this.logsWriter, whiteList, blackList,
 								this.config.getPageTimeout(),
 								this.config.getMaxRequestNumber(),
-								this.config.getGeckodriverBinPath().toString());
+								this.config.getGeckodriverBinPath().toString(),
+								this.config.getScreenshotsDirPath().toString());
 						Thread t = new Thread(r);
 						t.start();
 						threadsList.set(i, t);
@@ -194,7 +195,8 @@ public class App {
 						index, this.logsWriter, whiteList, blackList,
 						this.config.getPageTimeout(),
 						this.config.getMaxRequestNumber(),
-						this.config.getGeckodriverBinPath().toString());
+						this.config.getGeckodriverBinPath().toString(),
+						this.config.getScreenshotsDirPath().toString());
 				Thread t = new Thread(r);
 				threadsList.add(t);
 				t.start();

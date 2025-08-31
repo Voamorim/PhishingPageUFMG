@@ -1,21 +1,26 @@
 package br.ufmg.utils;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.HashSet;
-import java.util.Set;
 
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jsoup.Jsoup;
@@ -23,10 +28,13 @@ import org.jsoup.nodes.Document;
 import org.littleshoot.proxy.HttpFilters;
 import org.littleshoot.proxy.HttpFiltersAdapter;
 import org.littleshoot.proxy.HttpFiltersSourceAdapter;
+import org.openqa.selenium.NoSuchSessionException;
+import org.openqa.selenium.OutputType;
 import org.openqa.selenium.Proxy;
+import org.openqa.selenium.WebDriverException;
+import org.openqa.selenium.firefox.FirefoxDriver;
+import org.openqa.selenium.firefox.FirefoxOptions;
 import org.openqa.selenium.remote.DesiredCapabilities;
-
-import com.google.common.net.HttpHeaders;
 
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.HttpMethod;
@@ -38,13 +46,6 @@ import net.lightbody.bmp.BrowserMobProxy;
 import net.lightbody.bmp.BrowserMobProxyServer;
 import net.lightbody.bmp.client.ClientUtil;
 import net.lightbody.bmp.core.har.HarEntry;
-
-import org.openqa.selenium.WebDriverException;
-import org.openqa.selenium.firefox.FirefoxDriver;
-import org.openqa.selenium.firefox.FirefoxOptions;
-import org.apache.commons.codec.digest.DigestUtils;
-import org.openqa.selenium.firefox.FirefoxDriverLogLevel;
-import org.openqa.selenium.NoSuchSessionException;
 
 public class Process implements Runnable {
 
@@ -61,6 +62,7 @@ public class Process implements Runnable {
     private LogsWriter logsWriter;
     private URLList whitelist;
     private URLList blacklist;
+    private final String screenshotsDirPath;
     private final String geckoDriverBinaryPath;
     private static final Logger LOGGER = LogManager.getLogger("File");
 
@@ -73,7 +75,8 @@ public class Process implements Runnable {
             URLList blacklist,
             int timeout,
             int requestsLimit,
-            String geckoDriverBinaryPath) {
+            String geckoDriverBinaryPath,
+            String screenshotsDirPath) {
 
         this.timeout = timeout;
         this.whitelist = whitelist;
@@ -86,6 +89,7 @@ public class Process implements Runnable {
         this.restartProcesses = restartProcesses;
         this.requestsLimit = requestsLimit;
         this.geckoDriverBinaryPath = geckoDriverBinaryPath;
+        this.screenshotsDirPath = screenshotsDirPath;
     }
 
     public void getProxyServer() {
@@ -160,7 +164,13 @@ public class Process implements Runnable {
             options.addArguments("--headless");
             options.setBinary("/usr/bin/firefox");
             options.merge(capabilities);
+
+            // Altera o user-agent padrão
+            String userAgent = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0";
+            options.addPreference("general.useragent.override", userAgent);
+
             driver = new FirefoxDriver(options);
+            driver.manage().window().maximize();
         } catch (WebDriverException e) {
             LOGGER.error("Erro ao inicializar o Firefox Driver: {}", e.getMessage(), e);  // ERROR
         } catch (Exception e) {
@@ -192,7 +202,8 @@ public class Process implements Runnable {
         }
 
         proxy.newHar("url_" + pid);
-        driver.manage().timeouts().pageLoadTimeout(timeout, TimeUnit.SECONDS);
+
+        driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(timeout));
         String finalUrl = "about:blank";
         try {
             logsWriter.writeTimeURLs(pid, "URL: " + url + " ");
@@ -201,6 +212,10 @@ public class Process implements Runnable {
             logsWriter.writeTimeURLs(pid, Long.toString(System.currentTimeMillis()) + " ");
             finalUrl = driver.getCurrentUrl();
             LOGGER.info("URL acessada com sucesso: {}", finalUrl);  // INFOLong.toString(System.currentTim
+  
+            // Aguarda com que os elementos visuais da página carreguem
+            Thread.sleep(3000);
+            takeScreenshot(finalUrl);
         } catch (WebDriverException e) {
             if (e instanceof NoSuchSessionException) {
                 LOGGER.error("Sessão do WebDriver não existe ou não está ativa ao acessar {}: {}", composedURL, e.getMessage(), e);
@@ -223,6 +238,23 @@ public class Process implements Runnable {
 
         LOGGER.warn("URL final inválida: about:blank");  // WARN
         return new Response(true, false, "wtf");
+    }
+
+    private void takeScreenshot(String url){
+        File screenshotFile = driver.getFullPageScreenshotAs(OutputType.FILE);
+
+        String screenshotStrPath = screenshotsDirPath + "/" + Base64Parser.encode(url) + ".png";
+        Path destinationPath = new File(screenshotStrPath).toPath();
+
+        try{
+            // Salva a captura de tela da página
+            Files.copy(screenshotFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
+            screenshotFile.delete();
+
+            LOGGER.info("Screenshot salva com sucesso em: {}", destinationPath.toString());
+        } catch (IOException e){
+            LOGGER.error("Erro ao salvar a captura de tela da página: {}", e.getMessage(), e);
+        }
     }
 
     private void handleBlockedDomain(String dom) {
