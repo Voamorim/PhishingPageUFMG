@@ -10,9 +10,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 public class MemoryMonitor implements Runnable {
-
 	private AtomicBoolean processesRestart;
-  	private static final Logger LOGGER = LogManager.getLogger();
+	private static final Logger LOGGER = LogManager.getLogger();
 
 	public MemoryMonitor(AtomicBoolean rp) {
 		processesRestart = rp;
@@ -61,7 +60,8 @@ public class MemoryMonitor implements Runnable {
 			String[] outputList = tokens.split("\\s+");
 			double memoryPercent = ((Double.parseDouble(outputList[1]) - Double.parseDouble(outputList[6]))
 					/ Double.parseDouble(outputList[1])) * 100;
-			if (memoryPercent > 70.0) {
+			if (memoryPercent > 70.0) { // Caso esteja utilizando mais de 70% da memória, reinicia o geckodriver e o
+										// firefox
 				numberOfRestarts++;
 				LOGGER.warn("Restarting process " + numberOfRestarts + "...");
 				LOGGER.info(memoryPercent);

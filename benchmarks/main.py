@@ -6,16 +6,18 @@ from datetime import datetime
 import time
 import pandas as pd
 
-def get_configuration(logs_dir_path, threads, page_timeout, window_timeout, max_requests):
+def get_configuration(logs_dir_path, threads, page_timeout, images_load_timeout, window_timeout, max_requests):
     return {
         'concurrentBrowsers': threads,
         'pageTimeout': page_timeout,
+        'imagesLoadTimeout': images_load_timeout,
         'logsDirPath': str(logs_dir_path),
         'windowTimeout': window_timeout,
         'maxRequests': max_requests,
         'repositoryPath': '../../example/repo',
         'geckodriverBinPath': "/usr/local/bin/geckodriver",
-        'runtimeControllersPath': '../runtime_params'
+        'runtimeControllersPath': '../runtime_params',
+        'screenshotsPath': ''
     }
 
 def clear_log_files(log_dir_path):
@@ -104,12 +106,12 @@ def save_collected_data(collected_data, logs_dir_path):
             json.dump(value, f)
     return df
 
-def execute_configuration(current_workdir, logs_dir, threads, page_timeout, window_timeout, max_requests):
+def execute_configuration(current_workdir, logs_dir, threads, page_timeout, images_load_timeout, window_timeout, max_requests):
     logs_dir_path = current_workdir.joinpath(logs_dir)
     if not logs_dir_path.exists():
         os.mkdir(logs_dir_path)
 
-    config = get_configuration(logs_dir_path, threads, page_timeout, window_timeout, max_requests)
+    config = get_configuration(logs_dir_path, threads, page_timeout, images_load_timeout, window_timeout, max_requests)
     config_file_path = logs_dir_path.joinpath('config.json')
     with open(config_file_path, 'w') as f:
         json.dump(config, f)
@@ -129,12 +131,15 @@ def main():
     if not runtime_params_dir.exists():
         os.mkdir(runtime_params_dir)
 
-    for concurrent_browsers in range(1, 9):
+    conc_brow = [1, 2, 4, 6]
+    window_timeout = 15 
+    max_requests = 3 
+
+    for concurrent_browsers in conc_brow:
         for page_timeout in range(15, 61, 15):
-            for window_timeout in [15, 30, 45, 60]:
-                for max_requests in [1, 3, 5, 7]:
-                    logs_dir = f"{concurrent_browsers}-{page_timeout}-{window_timeout}-{max_requests}"
-                    execute_configuration(current_filepath, logs_dir, concurrent_browsers, page_timeout, window_timeout, max_requests)
+            for images_timeout in [1, 3, 5, 7]:                
+                logs_dir = f"{concurrent_browsers}-{page_timeout}-{images_timeout}-{window_timeout}-{max_requests}" 
+                execute_configuration(current_filepath, logs_dir, concurrent_browsers, page_timeout, images_timeout, window_timeout, max_requests)
 
 if __name__ == '__main__':
     main()

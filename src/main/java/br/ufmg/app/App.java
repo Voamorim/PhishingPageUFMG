@@ -37,7 +37,7 @@ public class App {
 	private BlockingQueue<String> urlsList;
 	private AtomicBoolean restartProcesses;
 	private AtomicBoolean killProcesses;
-  	private static final Logger LOGGER = LogManager.getLogger();
+	private static final Logger LOGGER = LogManager.getLogger();
 
 	/* Inicialização de variáveis. */
 	public App(Configuration config) { // int instancias, int timeout, int limite_requisicoes, Path repository, Path
@@ -77,8 +77,8 @@ public class App {
 		if (repo.isDirectory()) {
 			urlFiles = repo.listFiles();
 			Arrays.sort(urlFiles, Comparator.comparingLong(File::lastModified));
-		} else if(repo.isFile()){
-			urlFiles = new File[]{repo};
+		} else if (repo.isFile()) {
+			urlFiles = new File[] { repo };
 		} else {
 			LOGGER.error("Inexistent URLs repository " + this.config.getRepositoryPath().toString());
 			System.exit(-1);
@@ -169,12 +169,13 @@ public class App {
 			}
 
 			if (threadsList.size() >= this.config.getConcurrentBrowserInstancesNumber()) {
-				for (int i=0; i<threadsList.size(); i++) {
-					if(!threadsList.get(i).isAlive()) {
+				for (int i = 0; i < threadsList.size(); i++) {
+					if (!threadsList.get(i).isAlive()) {
 						br.ufmg.utils.Process r = new br.ufmg.utils.Process(
 								urlsList, killProcesses, restartProcesses,
 								i, this.logsWriter, whiteList, blackList,
 								this.config.getPageTimeout(),
+								this.config.getImagesLoadTimeout(),
 								this.config.getMaxRequestNumber(),
 								this.config.getGeckodriverBinPath().toString(),
 								this.config.getScreenshotsDirPath().toString());
@@ -194,6 +195,7 @@ public class App {
 						urlsList, killProcesses, restartProcesses,
 						index, this.logsWriter, whiteList, blackList,
 						this.config.getPageTimeout(),
+						this.config.getImagesLoadTimeout(),
 						this.config.getMaxRequestNumber(),
 						this.config.getGeckodriverBinPath().toString(),
 						this.config.getScreenshotsDirPath().toString());
