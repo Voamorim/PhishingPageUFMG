@@ -60,24 +60,12 @@ public class MemoryMonitor implements Runnable {
 			String[] outputList = tokens.split("\\s+");
 			double memoryPercent = ((Double.parseDouble(outputList[1]) - Double.parseDouble(outputList[6]))
 					/ Double.parseDouble(outputList[1])) * 100;
-			if (memoryPercent > 70.0) { // Caso esteja utilizando mais de 70% da memória, reinicia o geckodriver e o
+			if (memoryPercent > 90.0) { // Caso esteja utilizando mais de 90% da memória, reinicia o geckodriver e o
 										// firefox
 				numberOfRestarts++;
 				LOGGER.warn("Restarting process " + numberOfRestarts + "...");
 				LOGGER.info(memoryPercent);
-				processesRestart.set(true);
-				try {
-					p = Runtime.getRuntime().exec("pkill -9 firefox");
-					p.waitFor();
-					p = Runtime.getRuntime().exec("pkill -9 geckodriver");
-					p.waitFor();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+				processesRestart.set(true);	
 			}
 		}
 	}

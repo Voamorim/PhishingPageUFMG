@@ -230,33 +230,34 @@ public class Process implements Runnable {
                 Thread.sleep(Duration.ofSeconds(imagesLoadTimeout).toMillis());
             }
 
-            // Screenshot antes de se movimentar na página
-            String screenshotFileName = Base64Parser.encode(url);
-            takeScreenshot(screenshotFileName  + "_0");
-
-            // Screenshot depois de se movimentar na página 
+            // Se movimenta na página e então tira a screenshot
             JavascriptExecutor js = (JavascriptExecutor) driver;
             long pageHeight = (long) js.executeScript("return document.body.scrollHeight");
             int increment = 1080;
             int pos = 0;
             int numScrolls = 0;
             int maxScrolls = 3;
-            while(pos + increment < pageHeight && numScrolls < maxScrolls){
+            while (pos + increment < pageHeight && numScrolls < maxScrolls) {
                 js.executeScript("window.scrollBy(0, " + increment + ")");
                 pos += increment;
 
                 try {
                     new WebDriverWait(driver, Duration.ofSeconds(imagesLoadTimeout)).until(webDriver -> {
                         return (Boolean) js.executeScript("return typeof jQuery !== 'undefined' && jQuery.active == 0");
-                    }); 
+                    });
                 } catch (Exception e) {
-                    Thread.sleep(Duration.ofSeconds(imagesLoadTimeout).toMillis()); 
+                    Thread.sleep(Duration.ofSeconds(imagesLoadTimeout).toMillis());
                 }
 
                 numScrolls += 1;
             }
-            takeScreenshot(screenshotFileName + "_1");
 
+            // Volta ao topo da página
+            js.executeScript("window.scrollTo(0, 0)");
+
+            // Realiza a captura de tela
+            String screenshotFileName = Base64Parser.encode(url);
+            takeScreenshot(screenshotFileName);
         } catch (WebDriverException e) {
             if (e instanceof NoSuchSessionException) {
                 LOGGER.error("Sessão do WebDriver não existe ou não está ativa ao acessar {}: {}", composedURL,
