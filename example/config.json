@@ -1,7 +1,7 @@
 {
-    "concurrentBrowsers": 2,
+    "concurrentBrowsers": 6,
     "pageTimeout": 15,
-    "windowTimeout": 15,
+    "windowTimeout": 5,
     "imagesLoadTimeout": 1,
     "maxRequests": 3,
     "repositoryPath": "./repo",
@@ -10,5 +10,6 @@
     "logsDirPath": "./logs",
     "blackListPath": "blackListDirectoryOrFile",
     "whiteListPath": "whiteListDirectoryOrFile",
-    "screenshotsPath": "./screenshots"
+    "screenshotsPath": "./screenshots",
+    "downloadsPath": "./downloads"
 }

@@ -24,6 +24,7 @@ public class Configuration {
     private Path runtimeControllersPath;
     private Path logsDirPath;
     private Path screenshotsDirPath;
+    private Path downloadsDirPath;
 
     public Configuration(String configFilePathStr) {
         // Get configuration file and the propoer filepaths to get the path of the
@@ -35,7 +36,6 @@ public class Configuration {
         } else {
             this.configFilePath = Paths.get(currentWorkDir.toString(), configFilePathStr).toAbsolutePath();
         }
-
 
         // Reading configuration JSON file
         try (FileReader reader = new FileReader(this.configFilePath.toString())) {
@@ -52,6 +52,7 @@ public class Configuration {
             this.readRuntimeControllersPath(configObject);
             this.readGeckodriverBinaryPath(configObject);
             this.readScreenshotsDirPath(configObject);
+            this.downloadsDirPath(configObject);
 
             // Optional parameters
             this.readLogsDirPath(configObject);
@@ -110,8 +111,13 @@ public class Configuration {
     }
 
     private void readScreenshotsDirPath(JSONObject configObject) throws JSONException {
-        Path specifiedAttribute = Paths.get(configObject.getString("screenshotsPath"));
-        this.screenshotsDirPath = readRelativeOrAbsolutePath(specifiedAttribute);
+        Path specifiedScreenshotsDir = Paths.get(configObject.getString("screenshotsPath"));
+        this.screenshotsDirPath = readRelativeOrAbsolutePath(specifiedScreenshotsDir);
+    }
+
+    private void downloadsDirPath(JSONObject configObject) throws JSONException {
+        Path specifiedDownloadsDir = Paths.get(configObject.getString("downloadsPath"));
+        this.downloadsDirPath = readRelativeOrAbsolutePath(specifiedDownloadsDir);
     }
 
     private void readWhiteListPath(JSONObject configObject) throws JSONException {
@@ -190,5 +196,9 @@ public class Configuration {
 
     public Path getScreenshotsDirPath() {
         return this.screenshotsDirPath;
+    }
+
+    public Path getDownloadsDirPath() {
+        return this.downloadsDirPath;
     }
 }

@@ -178,7 +178,8 @@ public class App {
 								this.config.getImagesLoadTimeout(),
 								this.config.getMaxRequestNumber(),
 								this.config.getGeckodriverBinPath().toString(),
-								this.config.getScreenshotsDirPath().toString());
+								this.config.getScreenshotsDirPath().toString(),
+								this.config.getDownloadsDirPath().toString());
 						Thread t = new Thread(r);
 						t.start();
 						threadsList.set(i, t);
@@ -198,7 +199,8 @@ public class App {
 						this.config.getImagesLoadTimeout(),
 						this.config.getMaxRequestNumber(),
 						this.config.getGeckodriverBinPath().toString(),
-						this.config.getScreenshotsDirPath().toString());
+						this.config.getScreenshotsDirPath().toString(),
+						this.config.getDownloadsDirPath().toString());
 				Thread t = new Thread(r);
 				threadsList.add(t);
 				t.start();

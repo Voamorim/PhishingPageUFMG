@@ -35,6 +35,7 @@ import org.openqa.selenium.Proxy;
 import org.openqa.selenium.WebDriverException;
 import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.firefox.FirefoxOptions;
+import org.openqa.selenium.firefox.FirefoxProfile;
 import org.openqa.selenium.remote.DesiredCapabilities;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
@@ -66,6 +67,7 @@ public class Process implements Runnable {
     private URLList whitelist;
     private URLList blacklist;
     private final String screenshotsDirPath;
+    private final String downloadsDirPath;
     private final String geckoDriverBinaryPath;
     private static final Logger LOGGER = LogManager.getLogger("File");
 
@@ -80,7 +82,8 @@ public class Process implements Runnable {
             int imagesLoadTimeout,
             int requestsLimit,
             String geckoDriverBinaryPath,
-            String screenshotsDirPath) {
+            String screenshotsDirPath,
+            String downloadsDirPath) {
 
         this.timeout = timeout;
         this.imagesLoadTimeout = imagesLoadTimeout;
@@ -95,6 +98,7 @@ public class Process implements Runnable {
         this.requestsLimit = requestsLimit;
         this.geckoDriverBinaryPath = geckoDriverBinaryPath;
         this.screenshotsDirPath = screenshotsDirPath;
+        this.downloadsDirPath = downloadsDirPath;
     }
 
     public void getProxyServer() {
@@ -163,18 +167,31 @@ public class Process implements Runnable {
     public void getFirefoxDriver(DesiredCapabilities capabilities) {
         LOGGER.info("Inicializando o Firefox Driver..."); // INFO
         try {
+            FirefoxProfile profile = new FirefoxProfile();
+
+            // Customizes download options
+            profile.setPreference("browser.download.folderList", 2);
+            profile.setPreference("browser.download.dir", this.downloadsDirPath);
+            profile.setPreference("browser.helperApps.neverAsk.saveToDisk",
+                    "application/pdf,application/octet-stream,text/csv,application/vnd.ms-excel");
+            profile.setPreference("pdfjs.disabled", true);
+            profile.setPreference("browser.download.viewableInternally.enabledTypes", "");
+            profile.setPreference("browser.download.manager.showWhenStarting", false);
+
+            // Changes user agent to avoid detection
+            String userAgent = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0";
+            profile.setPreference("general.useragent.override", userAgent);
+
             FirefoxOptions options = new FirefoxOptions();
+            options.setProfile(profile);
+
             options.setProxy(seleniumProxy);
             options.addArguments("--headless");
             options.addArguments("--window-size=1920,1080");
             options.setBinary("/usr/bin/firefox");
-            options.merge(capabilities);
-
-            // Altera o user-agent padrão
-            String userAgent = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0";
-            options.addPreference("general.useragent.override", userAgent);
-
             options.setPageLoadStrategy(PageLoadStrategy.NORMAL);
+
+            options.merge(capabilities);
 
             driver = new FirefoxDriver(options);
             driver.manage().window().maximize();

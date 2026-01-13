@@ -17,7 +17,8 @@ def get_configuration(logs_dir_path, threads, page_timeout, images_load_timeout,
         'repositoryPath': '../../example/repo',
         'geckodriverBinPath': "/usr/local/bin/geckodriver",
         'runtimeControllersPath': '../runtime_params',
-        'screenshotsPath': ''
+        'screenshotsPath': '../../example/screenshots',
+        'downloadsPath': '../../example/downloads',
     }
 
 def clear_log_files(log_dir_path):
