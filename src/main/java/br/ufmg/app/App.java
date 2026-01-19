@@ -37,6 +37,7 @@ public class App {
 	private BlockingQueue<String> urlsList;
 	private AtomicBoolean restartProcesses;
 	private AtomicBoolean killProcesses;
+	private AtomicBoolean allUrlsProcessed;
 	private static final Logger LOGGER = LogManager.getLogger();
 
 	/* Inicialização de variáveis. */
@@ -52,6 +53,7 @@ public class App {
 		urlsList = new LinkedBlockingDeque<String>();
 		restartProcesses = new AtomicBoolean(false);
 		killProcesses = new AtomicBoolean(false);
+		allUrlsProcessed = new AtomicBoolean(false);
 	}
 
 	public void run() throws FileNotFoundException, UnsupportedEncodingException, IOException, InterruptedException {
@@ -121,7 +123,18 @@ public class App {
 			BufferedReader br = new BufferedReader(new FileReader(runtimeFile.toString()));
 			char isRunningBoolean = (char) br.read();
 			br.close();
-			return (isRunningBoolean != '0');
+
+			if (isRunningBoolean == 0) {
+				LOGGER.info("The runtime file " + runtimeFile.toString() + " indicates that the app must stop.");
+				return false;
+			}
+
+			if (this.allUrlsProcessed.get()) {
+				LOGGER.info("All URLs have been processed. The app will stop.");
+				return false;
+			}
+
+			return true;
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 			System.exit(-1);
@@ -141,12 +154,17 @@ public class App {
 		List<Thread> threadsList = new ArrayList<Thread>();
 
 		long startTime = System.nanoTime();
-		int index = 0;
 
 		while (isAppRunning()) {
 
 			if (killProcesses.get()) {
 				break;
+			}
+
+			// Check if all URLs are processed and no more need to be added
+			if (urlsList.isEmpty() && !this.allUrlsProcessed.get() && threadsList.size() > 0) {
+				LOGGER.info("All URLs have been processed. Signaling threads to stop.");
+				this.allUrlsProcessed.set(true);
 			}
 
 			if (restartProcesses.get()) {
@@ -191,10 +209,11 @@ public class App {
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
-			} else {
+			} else if (!urlsList.isEmpty() && !killProcesses.get()) {
+				int threadIndex = threadsList.size();
 				br.ufmg.utils.Process r = new br.ufmg.utils.Process(
 						urlsList, killProcesses, restartProcesses,
-						index, this.logsWriter, whiteList, blackList,
+						threadIndex, this.logsWriter, whiteList, blackList,
 						this.config.getPageTimeout(),
 						this.config.getImagesLoadTimeout(),
 						this.config.getMaxRequestNumber(),
@@ -204,8 +223,19 @@ public class App {
 				Thread t = new Thread(r);
 				threadsList.add(t);
 				t.start();
-				LOGGER.info("Starting thread " + Integer.toString(index));
-				index += 1;
+				LOGGER.info("Starting thread " + Integer.toString(threadIndex));
+			}
+
+			// Check if all threads have finished
+			if (this.allUrlsProcessed.get() && areAllThreadsFinished(threadsList)) {
+				LOGGER.info("All threads have finished. Exiting main loop.");
+				break;
+			}
+
+			try {
+				TimeUnit.MILLISECONDS.sleep(500);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
 			}
 		}
 
@@ -257,6 +287,15 @@ public class App {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+
+	private boolean areAllThreadsFinished(List<Thread> threadsList) {
+		for (Thread thread : threadsList) {
+			if (thread.isAlive()) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 }

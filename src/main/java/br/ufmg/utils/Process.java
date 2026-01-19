@@ -429,7 +429,16 @@ public class Process implements Runnable {
                 }
                 long startTime = System.currentTimeMillis();
                 logsWriter.writeTimeURLs(pid, Long.toString(startTime) + " ");
-                String composedURL = listaUrls.take();
+                String composedURL = listaUrls.poll(5, java.util.concurrent.TimeUnit.SECONDS);
+
+                if (composedURL == null) {
+                    // Timeout occurred, check if we should exit
+                    if (killProcesses.get()) {
+                        LOGGER.info("Processo PID {} finalizando. Sinal de parada recebido.", pid); // INFO
+                        break;
+                    }
+                    continue;
+                }
 
                 if (composedURL.equals("http://poison_pill.com")) {
                     LOGGER.info("Processo PID {} finalizando. Poison Pill recebido.", pid); // INFO
