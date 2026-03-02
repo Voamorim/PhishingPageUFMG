@@ -9,8 +9,12 @@ import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -51,11 +55,9 @@ import net.lightbody.bmp.client.ClientUtil;
 import net.lightbody.bmp.core.har.HarEntry;
 
 public class Process implements Runnable {
-
     private int pid;
     private int timeout;
     private int imagesLoadTimeout;
-    private int requestsLimit;
     private BrowserMobProxy proxy;
     private Proxy seleniumProxy;
     private FirefoxDriver driver;
@@ -80,7 +82,6 @@ public class Process implements Runnable {
             URLList blacklist,
             int timeout,
             int imagesLoadTimeout,
-            int requestsLimit,
             String geckoDriverBinaryPath,
             String screenshotsDirPath,
             String downloadsDirPath) {
@@ -95,33 +96,32 @@ public class Process implements Runnable {
         blockedDomains = new HashMap<String, Integer>();
         this.killProcesses = killProcesses;
         this.restartProcesses = restartProcesses;
-        this.requestsLimit = requestsLimit;
         this.geckoDriverBinaryPath = geckoDriverBinaryPath;
         this.screenshotsDirPath = screenshotsDirPath;
-        this.downloadsDirPath = downloadsDirPath;
+        this.downloadsDirPath = downloadsDirPath + "/pid" + this.pid + "_" +
+                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
     }
 
     public void getProxyServer() {
-        LOGGER.info("Inicializando o servidor de proxy..."); // INFO
+        LOGGER.info("Initializing proxy server...");
         try {
             proxy = new BrowserMobProxyServer();
             proxy.addRequestFilter((request, contents, messageInfo) -> {
                 String urlReq = io.netty.handler.codec.http.HttpHeaders.getHost(request);
                 String dom = urlReq.split(":")[0];
-                LOGGER.info("Processando requisição para domínio: {}", dom); // INFO
+                LOGGER.info("Processing request for domain: {}", dom);
 
                 if (!dom.contains("firefox") && !dom.contains("mozilla") && !dom.contains("proxy")) {
                     if (Singleton.getInstance().isInDict(dom)) {
-                        int numRequisicoes = Singleton.getInstance().getNumeroReq(dom);
-                        LOGGER.info("Número de requisições para {}: {}", dom, numRequisicoes); // INFO
+                        int numRequests = Singleton.getInstance().getNumeroReq(dom);
+                        LOGGER.info("Number of requests for {}: {}", dom, numRequests);
                     } else {
-                        LOGGER.warn("Domínio {} não encontrado no Singleton, adicionando agora.", dom); // WARN
+                        LOGGER.warn("Domain {} not found in Singleton, adding now.", dom);
                     }
                 }
 
-                // Caso de bloqueio
                 if (request.getMethod().equals(HttpMethod.POST) || dom.contains(".gov") || blacklist.has(dom)) {
-                    LOGGER.warn("Bloqueando requisição POST ou para domínio restrito: {}", dom); // WARN
+                    LOGGER.warn("Blocking POST request or to restricted domain: {}", dom);
                     return new DefaultHttpResponse(request.getProtocolVersion(), HttpResponseStatus.valueOf(405));
                 }
                 return null;
@@ -145,33 +145,36 @@ public class Process implements Runnable {
             proxy.setTrustAllServers(true);
             proxy.start(0);
         } catch (Exception e) {
-            LOGGER.error("Erro ao iniciar o servidor de proxy: {}", e.getMessage(), e); // ERROR
+            LOGGER.error("Error initializing proxy server: {}", e.getMessage(), e);
         }
     }
 
     public void getSeleniumProxy() {
-        LOGGER.info("Configurando Selenium Proxy..."); // INFO
+        LOGGER.info("Configuring Selenium Proxy...");
         seleniumProxy = ClientUtil.createSeleniumProxy(proxy);
         try {
             String hostIp = Inet4Address.getLocalHost().getHostAddress();
-            LOGGER.info("Obtendo endereço de IP local: {}", hostIp); // INFO
+            LOGGER.info("Local IP address obtained: {}", hostIp);
             seleniumProxy.setHttpProxy(hostIp + ":" + proxy.getPort());
             seleniumProxy.setSslProxy(hostIp + ":" + proxy.getPort());
         } catch (UnknownHostException e) {
-            LOGGER.error("Erro ao obter IP local: {}", e.getMessage(), e); // ERROR
+            LOGGER.error("Error obtaining local IP address: {}", e.getMessage(), e);
         } catch (Exception e) {
-            LOGGER.error("Erro inesperado ao configurar o Selenium Proxy: {}", e.getMessage(), e); // ERROR
+            LOGGER.error("Unexpected error configuring Selenium Proxy: {}", e.getMessage(), e);
         }
     }
 
     public void getFirefoxDriver(DesiredCapabilities capabilities) {
-        LOGGER.info("Inicializando o Firefox Driver..."); // INFO
+        LOGGER.info("Setting up Firefox Driver...");
         try {
             FirefoxProfile profile = new FirefoxProfile();
 
             // Customizes download options
             profile.setPreference("browser.download.folderList", 2);
+
+            new File(this.downloadsDirPath).mkdirs();
             profile.setPreference("browser.download.dir", this.downloadsDirPath);
+
             profile.setPreference("browser.helperApps.neverAsk.saveToDisk",
                     "application/pdf,application/octet-stream,text/csv,application/vnd.ms-excel");
             profile.setPreference("pdfjs.disabled", true);
@@ -196,19 +199,19 @@ public class Process implements Runnable {
             driver = new FirefoxDriver(options);
             driver.manage().window().maximize();
         } catch (WebDriverException e) {
-            LOGGER.error("Erro ao inicializar o Firefox Driver: {}", e.getMessage(), e); // ERROR
+            LOGGER.error("Error initializing Firefox Driver: {}", e.getMessage(), e);
         } catch (Exception e) {
-            LOGGER.error("Erro inesperado ao inicializar o Firefox Driver: {}", e.getMessage(), e); // ERROR
+            LOGGER.error("Unexpected error initializing Firefox Driver: {}", e.getMessage(), e);
         }
     }
 
     public Response accessURL(String composedURL) {
         if (composedURL == null || composedURL.trim().isEmpty()) {
-            LOGGER.warn("URL composta é nula ou vazia."); // WARN
+            LOGGER.warn("Composed URL is null or empty.");
             return new Response(true, false, "URL inválida");
         }
 
-        LOGGER.info("Acessando a URL: {}", composedURL); // INFO
+        LOGGER.info("Accessing URL: {}", composedURL);
         String[] temp = composedURL.split("  ");
         String url = temp[0];
         String dom = "";
@@ -220,7 +223,7 @@ public class Process implements Runnable {
         }
 
         if (blockedDomains.get(dom) != null && blockedDomains.get(dom) >= 10) {
-            LOGGER.warn("Domínio bloqueado: {}. Limite de tentativas excedido.", dom); // WARN
+            LOGGER.warn("Blocked domain: {}. Attempt limit exceeded.", dom);
             String out = composedURL.replace("\n", "") + "  BLOCKED  0\n";
             return new Response(true, false, out);
         }
@@ -235,9 +238,19 @@ public class Process implements Runnable {
             driver.get(url);
             logsWriter.writeTimeURLs(pid, Long.toString(System.currentTimeMillis()) + " ");
             finalUrl = driver.getCurrentUrl();
-            LOGGER.info("URL acessada com sucesso: {}", finalUrl);
+            LOGGER.info("URL accessed successfully: {}", finalUrl);
 
-            // Aguarda com que os elementos visuais da página carreguem
+            try {
+                Files.write(
+                        Paths.get(this.downloadsDirPath + "/" + "urls.txt"),
+                        (finalUrl + "\n").getBytes(),
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.APPEND);
+            } catch (IOException e) {
+                LOGGER.error("Error writing to URLs file: {}", e.getMessage(), e);
+            }
+
+            // Waits for the visual elements of the page to load
             try {
                 new WebDriverWait(driver, Duration.ofSeconds(imagesLoadTimeout)).until(webDriver -> {
                     JavascriptExecutor js = (JavascriptExecutor) webDriver;
@@ -247,7 +260,7 @@ public class Process implements Runnable {
                 Thread.sleep(Duration.ofSeconds(imagesLoadTimeout).toMillis());
             }
 
-            // Se movimenta na página e então tira a screenshot
+            // Scrolls the page and then takes the screenshot
             JavascriptExecutor js = (JavascriptExecutor) driver;
             long pageHeight = (long) js.executeScript("return document.body.scrollHeight");
             int increment = 1080;
@@ -269,34 +282,35 @@ public class Process implements Runnable {
                 numScrolls += 1;
             }
 
-            // Volta ao topo da página
-            js.executeScript("window.scrollTo(0, 0)");
+            js.executeScript("window.scrollTo(0, 0)"); // Returns to the top of the page
 
-            // Realiza a captura de tela
             String screenshotFileName = Base64Parser.encode(url);
             takeScreenshot(screenshotFileName);
         } catch (WebDriverException e) {
             if (e instanceof NoSuchSessionException) {
-                LOGGER.error("Sessão do WebDriver não existe ou não está ativa ao acessar {}: {}", composedURL,
+                LOGGER.error("WebDriver session does not exist or is not active when accessing {}: {}", composedURL,
                         e.getMessage(), e);
-                getFirefoxDriver(new DesiredCapabilities()); // Reinicializa o driver
+
+                // Restarts the Firefox Driver in case of session issues, which can be caused by
+                // memory problems or crashes
+                getFirefoxDriver(new DesiredCapabilities());
                 return createResponseWithException(composedURL, e);
             } else {
-                LOGGER.error("Erro no WebDriver ao acessar {}: {}", composedURL, e.getMessage(), e); // ERROR
+                LOGGER.error("WebDriver error when accessing {}: {}", composedURL, e.getMessage(), e);
                 handleBlockedDomain(dom);
                 logFirefoxException(composedURL, e);
                 return createResponseWithException(composedURL, e);
             }
         } catch (Exception e) {
-            LOGGER.error("Erro inesperado ao acessar a URL: {}", e.getMessage(), e); // ERROR
-            return new Response(true, false, "Erro inesperado");
+            LOGGER.error("Unexpected error when accessing {}: {}", composedURL, e.getMessage(), e);
+            return new Response(true, false, "Unexpected error");
         }
 
         if (!finalUrl.equals("about:blank")) {
             return handleSuccessfulUrlAccess(finalUrl, composedURL, dom);
         }
 
-        LOGGER.warn("URL final inválida: about:blank"); // WARN
+        LOGGER.warn("Final URL is about:blank, indicating a potential issue with page load or access: {}", composedURL);
         return new Response(true, false, "wtf");
     }
 
@@ -307,13 +321,13 @@ public class Process implements Runnable {
         Path destinationPath = new File(screenshotStrPath).toPath();
 
         try {
-            // Salva a captura de tela da página
             Files.copy(screenshotFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
             screenshotFile.delete();
 
-            LOGGER.info("Screenshot salva com sucesso em: {}", destinationPath.toString());
+            LOGGER.info("Screenshot taken successfully for URL: {}. Saved to: {}", screenshotFileName,
+                    destinationPath.toString());
         } catch (IOException e) {
-            LOGGER.error("Erro ao salvar a captura de tela da página: {}", e.getMessage(), e);
+            LOGGER.error("Error saving screenshot for URL {}: {}", screenshotFileName, e.getMessage(), e);
         }
     }
 
@@ -321,9 +335,9 @@ public class Process implements Runnable {
         if (blockedDomains.get(dom) == null) {
             blockedDomains.put(dom, 1);
         } else {
-            int valor = blockedDomains.get(dom);
-            valor += 1;
-            blockedDomains.replace(dom, valor);
+            int value = blockedDomains.get(dom);
+            value += 1;
+            blockedDomains.replace(dom, value);
         }
     }
 
@@ -331,7 +345,7 @@ public class Process implements Runnable {
         try {
             logsWriter.writeFirefoxException(pid, composedURL + e.toString());
         } catch (IOException e1) {
-            LOGGER.error("Erro ao registrar exceção do Firefox: {}", e1.getMessage(), e1); // ERROR
+            LOGGER.error("Error writing Firefox exception to log for URL {}: {}", composedURL, e1.getMessage(), e1);
         }
     }
 
@@ -348,18 +362,18 @@ public class Process implements Runnable {
             String hostname = new URL(finalUrl).getHost();
             ip = InetAddress.getByName(hostname);
             ipString = ip.getHostAddress();
-            LOGGER.info("Endereço IP do host {}: {}", hostname, ipString); // INFO
+            LOGGER.info("Hostname resolved: {} -> {}", hostname, ipString);
         } catch (MalformedURLException e) {
-            LOGGER.error("Erro ao processar URL malformada: {}", e.getMessage(), e); // ERROR
+            LOGGER.error("Malformed URL {}: {}", composedURL, e.getMessage(), e);
             finalUrl = "-";
             ipString = "0";
         } catch (UnknownHostException e) {
-            LOGGER.warn("Erro ao resolver o domínio {}: {}", dom, e.getMessage(), e); // WARN
+            LOGGER.warn("Unknown host for URL {}: {}", composedURL, e.getMessage(), e);
             handleBlockedDomain(dom);
             finalUrl = "-";
             ipString = "0";
         } catch (Exception e) {
-            LOGGER.error("Erro inesperado ao obter IP: {}", e.getMessage(), e); // ERROR
+            LOGGER.error("Unexpected error resolving hostname for URL {}: {}", composedURL, e.getMessage(), e);
             finalUrl = "-";
             ipString = "0";
         }
@@ -367,7 +381,7 @@ public class Process implements Runnable {
         String out = composedURL.replace("\n", "") + "  " + finalUrl + "  " + ipString + "\n";
         String hash;
         String page;
-        String tag; // Para marcar o tipo da página
+        String tag; // For tagging the type of page loaded (complete, partial, error, empty)
 
         try {
             String html = driver.getPageSource();
@@ -375,47 +389,47 @@ public class Process implements Runnable {
             page = document.toString();
             hash = DigestUtils.md5Hex(page);
 
-            // Obtém o status code do primeiro HarEntry
+            // Obtains the status code of the first HarEntry
             int statusCode = proxy.getHar().getLog().getEntries().get(0).getResponse().getStatus();
 
-            // Verifica o tipo de página para tageamento
+            // Verifies the type of page for tagging
             if (page.isEmpty()) {
-                tag = "EMPTY PAGE"; // Página vazia
+                tag = "EMPTY PAGE";
             } else if (statusCode >= 400 && statusCode < 600) {
-                tag = "ERROR PAGE"; // Página padrão de erro (404, 403, 5XX)
+                tag = "ERROR PAGE"; // Default error page (404, 403, 5XX)
             } else if (page.length() < 500) {
-                tag = "PARTIAL PAGE"; // Página parcialmente baixada, supõe-se que conteúdo completo seja mais longo
+                tag = "PARTIAL PAGE"; // Page partially loaded, assuming complete content would be longer
             } else {
-                tag = "COMPLETE PAGE"; // Página completa
+                tag = "COMPLETE PAGE";
             }
 
-            LOGGER.info("Página acessada com sucesso. Tag: {}, Hash gerado: {}", tag, hash); // INFO
-
+            LOGGER.info("Page accessed successfully. Tag: {}, Generated hash: {}", tag, hash);
         } catch (Exception e) {
-            LOGGER.error("Erro ao obter fonte da página: {}", e.getMessage(), e); // ERROR
+            LOGGER.error("Error obtaining font of the page for URL {}: {}", composedURL, e.getMessage(), e);
             page = "";
             hash = "EMPTYPAGE";
-            tag = "Empty Page"; // Assume-se vazia em caso de erro
+            tag = "Empty Page"; // Assume empty in case of error
         }
 
-        // Adiciona o tag ao log
+        // Adds the tag to the log
         String url8 = out.replace("\n", "") + "  " + hash + "  " + tag + "\n";
         try {
             logsWriter.writeSourcePage(pid, url8);
             logsWriter.writeSourcePage(pid, page);
             logsWriter.writeSourcePage(pid, "\n*!-@x!x@-!*\n");
         } catch (IOException e) {
-            LOGGER.error("Erro ao gravar a página fonte: {}", e.getMessage(), e); // ERROR
+            LOGGER.error("Error writing page source to log for URL {}: {}", composedURL, e.getMessage(), e);
         }
 
         return new Response(false, false, out, proxy.getHar().getLog().getEntries());
     }
 
     public void run() {
-        LOGGER.info("Iniciando o processo com PID: {}", pid); // INFO
+        LOGGER.info("Starting process with PID: {}", pid);
         System.setProperty("webdriver.gecko.driver", this.geckoDriverBinaryPath);
         DesiredCapabilities capabilities = new DesiredCapabilities();
 
+        // Initializes the proxy server and configures Selenium to use it
         getProxyServer();
         getSeleniumProxy();
         capabilities.setCapability("marionette", true);
@@ -424,7 +438,8 @@ public class Process implements Runnable {
         while (!killProcesses.get()) {
             try {
                 if (restartProcesses.get()) {
-                    LOGGER.warn("Reiniciando o processo com PID: {}", pid); // WARN
+                    LOGGER.warn("Restart signal received for process PID: {}. Restarting Firefox Driver and Proxy...",
+                            pid);
                     break;
                 }
                 long startTime = System.currentTimeMillis();
@@ -434,20 +449,21 @@ public class Process implements Runnable {
                 if (composedURL == null) {
                     // Timeout occurred, check if we should exit
                     if (killProcesses.get()) {
-                        LOGGER.info("Processo PID {} finalizando. Sinal de parada recebido.", pid); // INFO
+                        LOGGER.info("Process PID {} finalizing. Stop signal received.", pid);
                         break;
                     }
                     continue;
                 }
 
                 if (composedURL.equals("http://poison_pill.com")) {
-                    LOGGER.info("Processo PID {} finalizando. Poison Pill recebido.", pid); // INFO
+                    LOGGER.info("Poison Pill received for process PID: {}. Finalizing process.", pid);
                     killProcesses.compareAndSet(false, true);
                     break;
                 }
 
-                LOGGER.info("Acessando a próxima URL na lista para o PID {}: {}", pid, composedURL); // INFO
+                LOGGER.info("Process PID {} - URL obtained from queue: {}", pid, composedURL);
                 Response response = accessURL(composedURL);
+
                 String urlLog = response.getUrlLog();
                 logsWriter.writeAccessLog(pid, urlLog);
                 logsWriter.writeTcp(pid, urlLog.replace("\n", ""));
@@ -480,35 +496,37 @@ public class Process implements Runnable {
                         }
                     }
                     String ipsChain = String.join(",", ipsSet);
-                    LOGGER.info("Cadeia de IPs processados: {}", ipsChain); // INFO
+                    LOGGER.info("IPs chain extracted: {}", ipsChain);
                     logsWriter.writeTcp(pid, "  " + ipsChain);
                 }
 
+                // Marks the end of the log for this URL access
                 logsWriter.writeTcp(pid, "\n*!-@x!x@-!*\n");
                 logsWriter.writeCadeiaURLs(pid, "*!-@x!x@-!*\n");
                 long finalTime = System.currentTimeMillis();
                 logsWriter.writeTimeURLs(pid, Long.toString(finalTime) + "\n");
             } catch (NoSuchSessionException e) {
-                LOGGER.error("Sessão do WebDriver não existe ou não está ativa: {}", e.getMessage(), e);
+                LOGGER.error("WebDriver session does not exist or is not active when processing PID {}: {}", pid,
+                        e.getMessage(), e);
                 getFirefoxDriver(new DesiredCapabilities());
             } catch (WebDriverException e) {
-                LOGGER.error("Erro no WebDriver: {}", e.getMessage(), e);
+                LOGGER.error("WebDriver error in process PID {}: {}", pid, e.getMessage(), e);
             } catch (InterruptedException e) {
-                LOGGER.error("Processo interrompido com erro: {}", e.getMessage(), e);
+                LOGGER.error("Process PID {} interrupted: {}", pid, e.getMessage(), e);
             } catch (IOException e) {
-                LOGGER.error("Erro de I/O no processo PID {}: {}", pid, e.getMessage(), e);
+                LOGGER.error("I/O error in process PID {}: {}", pid, e.getMessage(), e);
             }
         }
 
         try {
             if (driver != null) {
                 driver.close();
-                LOGGER.info("Firefox Driver fechado com sucesso."); // INFO
+                LOGGER.info("Firefox Driver closed successfully for PID: {}", pid);
             }
             proxy.stop();
-            LOGGER.info("Proxy finalizado com sucesso para o PID: {}", pid); // INFO
+            LOGGER.info("Proxy server stopped successfully for PID: {}", pid);
         } catch (Exception e) {
-            LOGGER.error("Erro ao finalizar o processo PID {}: {}", pid, e.getMessage(), e); // ERROR
+            LOGGER.error("Error finalizing process PID {}: {}", pid, e.getMessage(), e);
         }
     }
 }

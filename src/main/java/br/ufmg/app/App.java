@@ -40,9 +40,7 @@ public class App {
 	private AtomicBoolean allUrlsProcessed;
 	private static final Logger LOGGER = LogManager.getLogger();
 
-	/* Inicialização de variáveis. */
-	public App(Configuration config) { // int instancias, int timeout, int limite_requisicoes, Path repository, Path
-										// whiteList, Path blackList, Path logsDir) {
+	public App(Configuration config) {
 		try {
 			this.whiteList = new URLList(config.getWhiteListPath());
 			this.blackList = new URLList(config.getBlackListPath());
@@ -73,7 +71,10 @@ public class App {
 		Singleton.getInstance().setParameters(this.config.getWindowTimeout(), this.logsWriter);
 	}
 
-	/* Função que realiza a leitura de arquivos. */
+	/*
+	 * Reads the files from the repository, sorting them by last modified time. If
+	 * the repository is a file, it reads only that file.
+	 */
 	private void getFiles() {
 		File repo = this.config.getRepositoryPath().toFile();
 		if (repo.isDirectory()) {
@@ -92,7 +93,6 @@ public class App {
 		}
 	}
 
-	/* Função que realiza a leitura de URLs. */
 	private void getURLs() {
 		Charset charset = Charset.forName("UTF-8");
 		for (File file : urlFiles) {
@@ -156,7 +156,6 @@ public class App {
 		long startTime = System.nanoTime();
 
 		while (isAppRunning()) {
-
 			if (killProcesses.get()) {
 				break;
 			}
@@ -194,7 +193,6 @@ public class App {
 								i, this.logsWriter, whiteList, blackList,
 								this.config.getPageTimeout(),
 								this.config.getImagesLoadTimeout(),
-								this.config.getMaxRequestNumber(),
 								this.config.getGeckodriverBinPath().toString(),
 								this.config.getScreenshotsDirPath().toString(),
 								this.config.getDownloadsDirPath().toString());
@@ -207,7 +205,7 @@ public class App {
 				try {
 					TimeUnit.SECONDS.sleep(1);
 				} catch (InterruptedException e) {
-					e.printStackTrace();
+					LOGGER.error("Error while sleeping the main thread: {}", e.getMessage(), e);
 				}
 			} else if (!urlsList.isEmpty() && !killProcesses.get()) {
 				int threadIndex = threadsList.size();
@@ -216,7 +214,6 @@ public class App {
 						threadIndex, this.logsWriter, whiteList, blackList,
 						this.config.getPageTimeout(),
 						this.config.getImagesLoadTimeout(),
-						this.config.getMaxRequestNumber(),
 						this.config.getGeckodriverBinPath().toString(),
 						this.config.getScreenshotsDirPath().toString(),
 						this.config.getDownloadsDirPath().toString());
@@ -235,7 +232,7 @@ public class App {
 			try {
 				TimeUnit.MILLISECONDS.sleep(500);
 			} catch (InterruptedException e) {
-				e.printStackTrace();
+				LOGGER.error("Error while sleeping the main thread: {}", e.getMessage(), e);
 			}
 		}
 
@@ -243,7 +240,7 @@ public class App {
 			try {
 				thread.join(1000);
 			} catch (InterruptedException e) {
-				e.printStackTrace();
+				LOGGER.error("Error while waiting for thread to finish: {}", e.getMessage(), e);
 			}
 		}
 
@@ -265,9 +262,8 @@ public class App {
 
 			this.logsWriter.closeFiles();
 		} catch (IOException e) {
-			e.printStackTrace();
+			LOGGER.error("Error writing time log file: {}", e.getMessage(), e);
 		}
-
 	}
 
 	private void writeRemainingURLs() {
@@ -280,12 +276,12 @@ public class App {
 					String url = urlsList.take();
 					remaining.write(url + "\n");
 				} catch (InterruptedException e) {
-					e.printStackTrace();
+					LOGGER.error("Error writing remaining URLs: {}", e.getMessage(), e);
 				}
 			}
 			remaining.close();
 		} catch (IOException e) {
-			e.printStackTrace();
+			LOGGER.error("Error writing remaining URLs: {}", e.getMessage(), e);
 		}
 	}
 
@@ -297,5 +293,4 @@ public class App {
 		}
 		return true;
 	}
-
 }

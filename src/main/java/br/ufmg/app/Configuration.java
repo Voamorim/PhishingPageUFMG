@@ -15,7 +15,6 @@ public class Configuration {
     private int pageTimeout;
     private int imagesLoadTimeout;
     private int windowTimeout;
-    private int maxRequestNumber;
     private Path configFilePath;
     private Path geckodriverBinPath;
     private Path whiteListPath;
@@ -46,7 +45,6 @@ public class Configuration {
             this.readConcurrentBrowserInstancesNumber(configObject);
             this.readPageTimeout(configObject);
             this.readWindowTimeout(configObject);
-            this.readMaxRequestNumber(configObject);
             this.readImagesLoadTimeout(configObject);
             this.readRepositoryPath(configObject);
             this.readRuntimeControllersPath(configObject);
@@ -84,10 +82,6 @@ public class Configuration {
 
     private void readImagesLoadTimeout(JSONObject configObject) throws JSONException {
         this.imagesLoadTimeout = configObject.getInt("imagesLoadTimeout");
-    }
-
-    private void readMaxRequestNumber(JSONObject configObject) throws JSONException {
-        this.maxRequestNumber = configObject.getInt("maxRequests");
     }
 
     private void readRepositoryPath(JSONObject configObject) throws JSONException {
@@ -160,10 +154,6 @@ public class Configuration {
 
     public int getImagesLoadTimeout() {
         return this.imagesLoadTimeout;
-    }
-
-    public int getMaxRequestNumber() {
-        return this.maxRequestNumber;
     }
 
     public Path getConfigFilePath() {

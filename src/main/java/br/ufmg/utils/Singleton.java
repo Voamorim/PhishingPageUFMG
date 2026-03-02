@@ -37,7 +37,7 @@ public class Singleton {
 		return _instance;
 	}
 
-	// metodos e atributos globais
+	// synchronized methods to set and get the global parameters
 	synchronized public void setParameters(int requestsWindow, LogsWriter logsWriter) {
 		this.logsWriter = logsWriter;
 		this.requestsWindow = requestsWindow;

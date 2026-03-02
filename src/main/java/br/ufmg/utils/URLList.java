@@ -27,6 +27,7 @@ public class URLList {
 		for (String line = fileData.readLine(); line != null; line = fileData.readLine()) {
 			this.urlsSet.add(line);
 		}
+		fileData.close();
 	}
 
 	private void readURLsFromFile() throws IOException {
@@ -39,16 +40,18 @@ public class URLList {
 				for (Path filePath : directory) {
 					this.addURLsFromFile(filePath);
 				}
+				directory.close();
 			} else {
-				System.err.println("[WARN] The file or directory " + this.urlListFilePath.toString() + " does not exists. So it will be ignored.");
+				System.err.println("[WARN] The file or directory " + this.urlListFilePath.toString()
+						+ " does not exists. So it will be ignored.");
 			}
 		} else {
-			System.err.println("[WARN] The file or directory " + this.urlListFilePath.toString() + " does not exists. So it will be ignored.");
+			System.err.println("[WARN] The file or directory " + this.urlListFilePath.toString()
+					+ " does not exists. So it will be ignored.");
 		}
 	}
 
 	synchronized public boolean has(String url) {
 		return this.urlsSet.contains(url);
 	}
-
 }
