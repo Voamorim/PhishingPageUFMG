@@ -4,8 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
-import java.net.MalformedURLException;
-import java.net.URL;
+import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -532,11 +531,12 @@ public class Process implements Runnable {
         InetAddress ip = null;
         String ipString = null;
         try {
-            String hostname = new URL(finalUrl).getHost();
+            String hostname = URI.create(finalUrl).getHost();
+
             ip = InetAddress.getByName(hostname);
             ipString = ip.getHostAddress();
             LOGGER.info("Hostname resolved: {} -> {}", hostname, ipString);
-        } catch (MalformedURLException e) {
+        } catch (IllegalArgumentException e) {
             LOGGER.error("Malformed URL {}: {}", composedURL, e.getMessage(), e);
             finalUrl = "-";
             ipString = "0";

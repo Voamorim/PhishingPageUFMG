@@ -182,9 +182,9 @@ public class App {
 					}
 				}
 				try {
-					Runtime.getRuntime().exec("pkill -9 firefox");
-					Runtime.getRuntime().exec("pkill -9 geckodriver");
-
+					for(String process : Arrays.asList("firefox", "geckodriver")) {
+						new ProcessBuilder("pkill", "-9", process).start();
+					}
 				} catch (IOException e) {
 					e.printStackTrace();
 				}

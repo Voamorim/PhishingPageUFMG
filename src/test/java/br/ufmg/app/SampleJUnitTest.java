@@ -1,7 +1,6 @@
 package br.ufmg.app;
 
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test; 
 import org.junit.jupiter.api.Assertions;
 
 import org.openqa.selenium.support.PageFactory;

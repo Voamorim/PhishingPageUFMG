@@ -1,6 +1,7 @@
 package br.ufmg.app;
 
 import java.net.URL;
+import java.net.URI;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,7 +27,7 @@ public class JUnitTestBase {
     SuiteConfiguration config = new SuiteConfiguration();
     baseUrl = config.getProperty("site.url");
     if (config.hasProperty("grid.url") && !"".equals(config.getProperty("grid.url"))) {
-      gridHubUrl = new URL(config.getProperty("grid.url"));
+      gridHubUrl = URI.create(config.getProperty("grid.url")).toURL();
     }
     capabilities = config.getCapabilities();
   };

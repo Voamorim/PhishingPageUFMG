@@ -32,7 +32,7 @@ public class MemoryMonitor implements Runnable {
 
 			java.lang.Process p = null;
 			try {
-				p = Runtime.getRuntime().exec("free -t -m");
+				p = new ProcessBuilder("free", "-t", "-m").start();
 				p.waitFor();
 			} catch (IOException e) {
 				LOGGER.error("Error while running free command: {}" , e.getMessage());
