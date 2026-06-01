@@ -152,8 +152,14 @@ public class App {
 		monitor.start();
 
 		List<Thread> threadsList = new ArrayList<Thread>();
+		List<br.ufmg.utils.Process> processesList = new ArrayList<br.ufmg.utils.Process>();
 
 		long startTime = System.nanoTime();
+
+		long pageTimeoutAttempts = 0;
+		long imagesTimeoutAttempts = 0;
+		long pageTimeoutSuccesses = 0;
+		long imagesTimeoutSuccesses = 0;
 
 		while (isAppRunning()) {
 			if (killProcesses.get()) {
@@ -161,7 +167,7 @@ public class App {
 			}
 
 			// Check if all URLs are processed and no more need to be added
-			if (urlsList.isEmpty() && !this.allUrlsProcessed.get() && threadsList.size() > 0) {
+			if (urlsList.isEmpty() && !this.allUrlsProcessed.get()) {
 				LOGGER.info("All URLs have been processed. Signaling threads to stop.");
 				this.allUrlsProcessed.set(true);
 			}
@@ -187,7 +193,13 @@ public class App {
 
 			if (threadsList.size() >= this.config.getConcurrentBrowserInstancesNumber()) {
 				for (int i = 0; i < threadsList.size(); i++) {
-					if (!threadsList.get(i).isAlive()) {
+					if (!threadsList.get(i).isAlive() && !urlsList.isEmpty()) {
+						br.ufmg.utils.Process oldProcess = processesList.get(i);
+						pageTimeoutAttempts += oldProcess.getPageTimeoutAttempts();
+						imagesTimeoutAttempts += oldProcess.getImagesTimeoutAttempts();
+						pageTimeoutSuccesses += oldProcess.getPageTimeoutSuccesses();
+						imagesTimeoutSuccesses += oldProcess.getImagesTimeoutSuccesses();
+						
 						br.ufmg.utils.Process r = new br.ufmg.utils.Process(
 								urlsList, killProcesses, restartProcesses,
 								i, this.logsWriter, whiteList, blackList,
@@ -197,8 +209,9 @@ public class App {
 								this.config.getScreenshotsDirPath().toString(),
 								this.config.getDownloadsDirPath().toString());
 						Thread t = new Thread(r);
-						t.start();
 						threadsList.set(i, t);
+						processesList.set(i, r);
+						t.start();
 						LOGGER.info("Restarting thread " + Integer.toString(i));
 					}
 				}
@@ -219,6 +232,7 @@ public class App {
 						this.config.getDownloadsDirPath().toString());
 				Thread t = new Thread(r);
 				threadsList.add(t);
+				processesList.add(r);
 				t.start();
 				LOGGER.info("Starting thread " + Integer.toString(threadIndex));
 			}
@@ -236,22 +250,59 @@ public class App {
 			}
 		}
 
-		for (Thread thread : threadsList) {
+		for(Thread thread : threadsList){
 			try {
-				thread.join(1000);
+				thread.join(60000);
 			} catch (InterruptedException e) {
-				LOGGER.error("Error while waiting for thread to finish: {}", e.getMessage(), e);
+				LOGGER.error("Interrupted while waiting for thread to finish: {}", e.getMessage(), e);
 			}
 		}
 
-		writeRemainingURLs();
+		for(br.ufmg.utils.Process process : processesList) {
+			pageTimeoutAttempts += process.getPageTimeoutAttempts();
+			imagesTimeoutAttempts += process.getImagesTimeoutAttempts();
+			pageTimeoutSuccesses += process.getPageTimeoutSuccesses();
+			imagesTimeoutSuccesses += process.getImagesTimeoutSuccesses();	
+		}
+
+		try {
+			Path logDirPath = this.logsWriter.getLogDirPath();
+			File imagesTimeoutFile = logDirPath.resolve(this.logsWriter.getStandardFileNameFromSuffix("images_timeout_success_rate")).toFile();
+			if(!imagesTimeoutFile.exists()) {
+				imagesTimeoutFile.createNewFile();
+			}
+			Double successRate = imagesTimeoutAttempts > 0 ? (double) imagesTimeoutSuccesses / imagesTimeoutAttempts * 100 : 0.0;
+			String imagesTimeoutSuccessRateString = Long.toString(imagesTimeoutSuccesses) + "/" + Long.toString(imagesTimeoutAttempts) + "\n" + Double.toString(successRate) + "%\n";
+			Files.write(imagesTimeoutFile.toPath(), imagesTimeoutSuccessRateString.getBytes());
+		} catch (IOException e) {
+			LOGGER.error("Error while writing images timeout success rates: {}", e.getMessage(), e);
+		}
+
+		try {
+			Path logDirPath = this.logsWriter.getLogDirPath();
+			File pageTimeoutFile = logDirPath.resolve(this.logsWriter.getStandardFileNameFromSuffix("page_timeout_success_rate")).toFile();
+			if(!pageTimeoutFile.exists()) {
+				pageTimeoutFile.createNewFile();
+			}
+			Double successRate = pageTimeoutAttempts > 0 ? (double) pageTimeoutSuccesses / pageTimeoutAttempts * 100 : 0.0;
+			String pageTimeoutSuccessRateString = Long.toString(pageTimeoutSuccesses) + "/" + Long.toString(pageTimeoutAttempts) + "\n" + Double.toString(successRate) + "%\n";
+			Files.write(pageTimeoutFile.toPath(), pageTimeoutSuccessRateString.getBytes());
+		} catch (IOException e) {
+			LOGGER.error("Error while writing page timeout success rates: {}", e.getMessage(), e);
+		}
+
 		monitor.interrupt();
+		try {
+			monitor.join(2000);
+		} catch (InterruptedException ignored) {}
+
+		writeRemainingURLs();
 		System.gc();
 
 		long finalTime = System.nanoTime();
 		long spentTime = finalTime - startTime;
 		String timeString = Long.toString(spentTime) + '\n';
-
+	
 		try {
 			Path logDirPath = this.logsWriter.getLogDirPath();
 			File timeFile = logDirPath.resolve(this.logsWriter.getStandardFileNameFromSuffix("time")).toFile();

@@ -1,10 +1,14 @@
 import psutil
 import os
+import shutil
 from pathlib import Path
 import json
 from datetime import datetime
 import time
 import pandas as pd
+
+DOWNLOADS_FOLDER_PATH = ''
+SCREENSHOTS_FOLDER_PATH = ''
 
 def get_configuration(logs_dir_path, threads, page_timeout, images_load_timeout, window_timeout, max_requests):
     return {
@@ -43,12 +47,29 @@ def collect_process_data(process):
     }
     
     try:
+        t1 = time.time()
+        s1 = psutil.net_io_counters(pernic=True)['enp5s0']
+
+        time.sleep(1)
+
+        t2 = time.time()
+        s2 = psutil.net_io_counters(pernic=True)['enp5s0']
+
+        dt = t2 - t1
+
+        download_speed = (s2.bytes_recv - s1.bytes_recv) / dt
+        upload_speed = (s2.bytes_sent - s1.bytes_sent) / dt
+
+        # Converts to Mbps
+        data['download_speed'] = (download_speed * 8) / (1024 ** 2)
+        data['upload_speed'] = (upload_speed * 8) / (1024 ** 2)
+
         with process.oneshot():
             data['cpu_percent'] = process.cpu_percent()
             data['memory_percent'] = process.memory_percent(memtype="rss")
             data['io_counters'] = process.io_counters()._asdict() if process.io_counters() else None
             data['threads'] = process.num_threads()
-            data['network_connections'] = len(process.connections())
+            data['network_connections'] = len(process.net_connections())
             data['cpu_times'] = process.cpu_times()._asdict()
 
             children = process.children(recursive=True)
@@ -67,7 +88,7 @@ def collect_process_data(process):
                             else:
                                 data['io_counters'] = child_io._asdict()
                         data['threads'] += child.num_threads()
-                        data['network_connections'] += len(child.connections())
+                        data['network_connections'] += len(child.net_connections())
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                     pass
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
@@ -86,7 +107,8 @@ def run_framework(current_workdir, config_file_path, logs_dir_path):
 def collect_data_during_execution(process):
     collected_data = {
         'cpu_percent': [], 'memory_percent': [], 'io_counters': [],
-        'threads': [], 'network_connections': [], 'cpu_times': [], 'timestamps': []
+        'threads': [], 'network_connections': [], 'cpu_times': [], 'timestamps': [],
+        'download_speed': [], 'upload_speed': []
     }
     
     while process.poll() is None:
@@ -132,14 +154,28 @@ def main():
     if not runtime_params_dir.exists():
         os.mkdir(runtime_params_dir)
 
-    conc_brow = [1, 2, 4, 6]
+    conc_brow = [1, 2, 4, 6, 8]
     window_timeout = 15 
     max_requests = 3 
 
     for concurrent_browsers in conc_brow:
         for page_timeout in range(15, 61, 15):
             for images_timeout in [1, 3, 5, 7]:                
-                logs_dir = f"{concurrent_browsers}-{page_timeout}-{images_timeout}-{window_timeout}-{max_requests}" 
+                # Removes all contents from screenshots/
+                shutil.rmtree(SCREENSHOTS_FOLDER_PATH)
+                os.makedirs(SCREENSHOTS_FOLDER_PATH)
+
+                # Removes all contents from downloads/
+                os.system(f"rm -rf {DOWNLOADS_FOLDER_PATH}/*")
+
+                logs_dir = f"{concurrent_browsers}-{page_timeout}-{images_timeout}-{window_timeout}-{max_requests}"
+
+                count = 1
+                while current_filepath.joinpath(Path(logs_dir)).is_dir():
+                    logs_dir = logs_dir.split('(')[0]
+                    logs_dir += f'({count})'
+                    count += 1
+
                 execute_configuration(current_filepath, logs_dir, concurrent_browsers, page_timeout, images_timeout, window_timeout, max_requests)
 
 if __name__ == '__main__':

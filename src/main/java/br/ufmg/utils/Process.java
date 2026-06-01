@@ -72,6 +72,10 @@ public class Process implements Runnable {
     private final String downloadsDirPath;
     private final String geckoDriverBinaryPath;
     private static final Logger LOGGER = LogManager.getLogger("File");
+    private long imagesTimeoutAttempts = 0;
+    private long imagesTimeoutSuccesses = 0;
+    private long pageTimeoutAttempts = 0;
+    private long pageTimeoutSuccesses = 0;
 
     public Process(BlockingQueue<String> urlsList,
             AtomicBoolean killProcesses,
@@ -182,7 +186,7 @@ public class Process implements Runnable {
             profile.setPreference("browser.download.manager.showWhenStarting", false);
 
             // Changes user agent to avoid detection
-            String userAgent = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0";
+            String userAgent = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0";
             profile.setPreference("general.useragent.override", userAgent);
 
             FirefoxOptions options = new FirefoxOptions();
@@ -229,14 +233,24 @@ public class Process implements Runnable {
         }
 
         proxy.newHar("url_" + pid);
-
-        driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(timeout));
         String finalUrl = "about:blank";
+        driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(timeout));
+
         try {
             logsWriter.writeTimeURLs(pid, "URL: " + url + " ");
             logsWriter.writeTimeURLs(pid, Long.toString(System.currentTimeMillis()) + " ");
+            
+            pageTimeoutAttempts += 1;
+            long timeBeginPageTimeout = System.currentTimeMillis();
             driver.get(url);
-            logsWriter.writeTimeURLs(pid, Long.toString(System.currentTimeMillis()) + " ");
+            long timeEndPageTimeout = System.currentTimeMillis();
+            pageTimeoutSuccesses += 1;
+            LOGGER.info("Page loaded sucessfully. Time spent on page timeout: " + (timeEndPageTimeout - timeBeginPageTimeout) / 1000.0 + " seconds.");
+
+            synchronized(logsWriter){
+                logsWriter.writeTimeURLs(pid, Long.toString(System.currentTimeMillis()) + " ");
+            }
+
             finalUrl = driver.getCurrentUrl();
             LOGGER.info("URL accessed successfully: {}", finalUrl);
 
@@ -249,42 +263,201 @@ public class Process implements Runnable {
             } catch (IOException e) {
                 LOGGER.error("Error writing to URLs file: {}", e.getMessage(), e);
             }
-
+          
+            String jsScript = 
+                "return (function() {" +
+                "    function isVisible(el) {" +
+                "        if (!el) return false;" +
+                "        const style = window.getComputedStyle(el);" +
+                "        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;" +
+                "        const rect = el.getBoundingClientRect();" +
+                "        return (rect.width > 0 && rect.height > 0);" +
+                "    }" +
+                "" +
+                "    function isInViewport(el) {" +
+                "        if (!isVisible(el)) return false;" +
+                "        const rect = el.getBoundingClientRect();" +
+                "        return (" +
+                "            rect.top < (window.innerHeight || document.documentElement.clientHeight) && " +
+                "            rect.bottom > 0 && " +
+                "            rect.left < (window.innerWidth || document.documentElement.clientWidth) && " +
+                "            rect.right > 0" +
+                "        );" +
+                "    }" +
+                "" + // 1. Checks for broken imagens on the screen
+                "    const images = Array.from(document.images);" +
+                "    const imagesValidas = images.every(img => {" +
+                "        if (!isInViewport(img)) return true;" +
+                "" +
+                "        if (!img.src && !img.srcset) return true;" +
+                "        if (img.complete) {" +
+                "            if (img.naturalWidth <= 1 || img.naturalHeight <= 1) return true;" +
+                "            return img.naturalWidth > 0;" +
+                "        }" +
+                "        return false;" +
+                "    });" +
+                "    if (!imagesValidas)" +
+                "        return false;" +
+                "" + // 2. Checks for broken videos/audios on the screen
+                "    const media = Array.from(document.querySelectorAll('video, audio'));" +
+                "    const mediaReady = media.every(m => {" +
+                "        if (!isInViewport(m)) return true;" +
+                "        if (m.error) return true;" +
+                "        if (m.preload === 'none') return true;" +
+                "        return m.readyState >= 2;" +
+                "    });" +
+                "    if (!mediaReady)" +
+                "        return false;" +
+                "" + // 3. Checks for active loader spinners on the screen
+                "    const loaders = document.querySelectorAll('.spinner, .loading, #loader, [class*=\\'loader\\'], [class*=\\'spinner\\']');" +
+                "    for (const loader of loaders) {" +
+                "        if (isInViewport(loader)) {" +
+                "            const rect = loader.getBoundingClientRect();" +
+                "            if (rect.width >= 50 && rect.height >= 50) {" +
+                "                return false;" +
+                "            }" +
+                "        }" +
+                "    }" +
+                "" +  // 4. Checks for active jQuery requests
+                "    if (typeof jQuery !== 'undefined' && jQuery.active > 0)" +
+                "        return false;" +
+                "" +
+                "    return true;" +
+                "})();";
+          
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            
             // Waits for the visual elements of the page to load
             try {
                 new WebDriverWait(driver, Duration.ofSeconds(imagesLoadTimeout)).until(webDriver -> {
-                    JavascriptExecutor js = (JavascriptExecutor) webDriver;
-                    return (Boolean) js.executeScript("return typeof jQuery !== 'undefined' && jQuery.active == 0");
+                    return (Boolean) js.executeScript(jsScript);
                 });
             } catch (Exception e) {
+                LOGGER.warn("Images load timeout expired before JavaScript load indication. Proceeding to the next step.");   
                 Thread.sleep(Duration.ofSeconds(imagesLoadTimeout).toMillis());
             }
 
             // Scrolls the page and then takes the screenshot
-            JavascriptExecutor js = (JavascriptExecutor) driver;
             long pageHeight = (long) js.executeScript("return document.body.scrollHeight");
             int increment = 1080;
             int pos = 0;
             int numScrolls = 0;
-            int maxScrolls = 3;
+            int maxScrolls = 10;
+
+            long timeBeginAllImagesTimeout = System.currentTimeMillis();
             while (pos + increment < pageHeight && numScrolls < maxScrolls) {
                 js.executeScript("window.scrollBy(0, " + increment + ")");
                 pos += increment;
 
                 try {
+                    long timeBeginImagesTimeout = System.currentTimeMillis();
                     new WebDriverWait(driver, Duration.ofSeconds(imagesLoadTimeout)).until(webDriver -> {
-                        return (Boolean) js.executeScript("return typeof jQuery !== 'undefined' && jQuery.active == 0");
+                        return (Boolean) js.executeScript(jsScript);
                     });
+                    long timeEndImagesTimeout = System.currentTimeMillis();
+                    LOGGER.info("Images loaded successfully after scrolling. Time spent: " + (timeEndImagesTimeout - timeBeginImagesTimeout) / 1000.0 + " seconds.");
                 } catch (Exception e) {
+                    LOGGER.warn("Images load timeout expired before JavaScript load indication. Proceeding to the next step.");     
                     Thread.sleep(Duration.ofSeconds(imagesLoadTimeout).toMillis());
                 }
 
                 numScrolls += 1;
             }
+            long timeEndAllImagesTimeout = System.currentTimeMillis();
+            LOGGER.info("Images Load Timeout completed. Total time spent: " + (timeEndAllImagesTimeout - timeBeginAllImagesTimeout) / 1000.0 + " seconds.");
+
+            String verificationJsScript = 
+                "return (function() {" +
+                "    let statusMask = 0;" +
+                "" + 
+                "    function isVisible(el) {" +
+                "        if (!el) return false;" +
+                "        const style = window.getComputedStyle(el);" +
+                "        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;" +
+                "        const rect = el.getBoundingClientRect();" +
+                "        return (rect.width > 0 && rect.height > 0);" +
+                "    }" +
+                "" + // 1. Checks for broken imagens on the screen
+                "    const images = Array.from(document.images);" +
+                "    const imagesValidas = images.every(img => {" +
+                "        if (!img.src && !img.srcset) return true;" + 
+                "        if (img.getAttribute('loading') === 'lazy' && !img.complete) return true;" + 
+                "        if (img.complete) {" +
+                "            if (img.naturalWidth <= 1 || img.naturalHeight <= 1) return true;" +
+                "            return img.naturalWidth > 0;" +
+                "        }" +
+                "        if (!isVisible(img) || img.width <= 1 || img.height <= 1) return true;" +
+                "        return false;" + 
+                "    });" +
+                "    if (!imagesValidas) {" +
+                "        statusMask |= 1;" + 
+                "    }" +
+                "" + // 2. Checks for broken videos/audios on the screen
+                "    const media = Array.from(document.querySelectorAll('video, audio'));" +
+                "    const mediaReady = media.every(m => {" +
+                "        if (m.error) return true;" + 
+                "        if (!isVisible(m)) return true;" + 
+                "        if (m.preload === 'none') return true;" + 
+                "        return m.readyState >= 2;" + 
+                "    });" +
+                "    if (!mediaReady) {" +
+                "        statusMask |= 2;" + 
+                "    }" +
+                "" + // 3. Checks for active loader spinners on the screen
+                "    const loaders = document.querySelectorAll('.spinner, .loading, #loader, [class*=\\'loader\\'], [class*=\\'spinner\\']');" +
+                "    for (const loader of loaders) {" +
+                "        if (isVisible(loader)) {" +
+                "            const rect = loader.getBoundingClientRect();" +
+                "            if (rect.width >= 50 && rect.height >= 50) {" +
+                "                statusMask |= 4;" + 
+                "                break;" +
+                "            }" +
+                "        }" +
+                "    }" +
+                "" +  // 4. Checks for active jQuery requests
+                "    if (typeof jQuery !== 'undefined' && jQuery.active > 0) {" +
+                "        statusMask |= 16;" + 
+                "    }" +
+                "" +
+                "    return statusMask;" +
+                "})();"; 
+
+            Long resultMask = (Long) js.executeScript(verificationJsScript);
+            boolean imagesTimeoutSuccess = false;
+
+            String fail_string = "_timout_fail_";
+
+            if (resultMask == 0){
+                imagesTimeoutSuccess = true;
+                LOGGER.info("A pagina {} carregou completamente com sucesso!", url);
+            } else {
+                if ((resultMask & 1) != 0){
+                    fail_string = fail_string + "i_";
+                    LOGGER.info("A pagina {} esta incompleta. Existem imagens quebradas ou incompletas.", url);
+                }
+                if ((resultMask & 2) != 0){
+                    fail_string = fail_string + "a_";
+                    LOGGER.info("A pagina {} esta incompleta. Existem elementos de audio/video quebrados na pagina.", url);
+                }
+                if ((resultMask & 4) != 0){
+                    fail_string = fail_string + "l_";
+                    LOGGER.info("A pagina {} esta incompleta. Um elemento de loading/spinner esta visivel na tela.", url);
+                } 
+                if ((resultMask & 8) != 0){
+                    fail_string = fail_string + "j_";
+                    LOGGER.info("A pagina {} esta incompleta. O jQuery possui requisicoes AJAX ativas.", url);
+                }
+            }
 
             js.executeScript("window.scrollTo(0, 0)"); // Returns to the top of the page
 
+            imagesTimeoutAttempts += 1;
+            imagesTimeoutSuccesses += imagesTimeoutSuccess == true ? 1 : 0;
+
             String screenshotFileName = Base64Parser.encode(url);
+
+            screenshotFileName += imagesTimeoutSuccess ? "" : fail_string;
+
             takeScreenshot(screenshotFileName);
         } catch (WebDriverException e) {
             if (e instanceof NoSuchSessionException) {
@@ -443,7 +616,9 @@ public class Process implements Runnable {
                     break;
                 }
                 long startTime = System.currentTimeMillis();
-                logsWriter.writeTimeURLs(pid, Long.toString(startTime) + " ");
+                synchronized(logsWriter){
+                    logsWriter.writeTimeURLs(pid, Long.toString(startTime) + " ");
+                }
                 String composedURL = listaUrls.poll(5, java.util.concurrent.TimeUnit.SECONDS);
 
                 if (composedURL == null) {
@@ -528,5 +703,21 @@ public class Process implements Runnable {
         } catch (Exception e) {
             LOGGER.error("Error finalizing process PID {}: {}", pid, e.getMessage(), e);
         }
+    }
+
+    public long getImagesTimeoutAttempts() {
+        return imagesTimeoutAttempts;
+    }
+
+    public long getImagesTimeoutSuccesses() {
+        return imagesTimeoutSuccesses;
+    }
+
+    public long getPageTimeoutAttempts() {
+        return pageTimeoutAttempts;
+    }
+
+    public long getPageTimeoutSuccesses() {
+        return pageTimeoutSuccesses;
     }
 }

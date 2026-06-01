@@ -26,48 +26,57 @@ public class MemoryMonitor implements Runnable {
 				return;
 			}
 
-			java.lang.Process p;
+			if (processesRestart.get()){
+				continue;
+			}
+
+			java.lang.Process p = null;
 			try {
 				p = Runtime.getRuntime().exec("free -t -m");
-			} catch (IOException e) {
-				e.printStackTrace();
-				continue;
-			}
-
-			try {
 				p.waitFor();
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-				continue;
-			}
-
-			BufferedReader buf = new BufferedReader(new InputStreamReader(p.getInputStream()));
-			String line = "";
-			String output = "";
-			String tokens = "";
-
-			try {
-				while ((line = buf.readLine()) != null) {
-					output += line + "\n";
-				}
-				tokens = output.split("\n")[1];
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				LOGGER.error("Error while running free command: {}" , e.getMessage());
 				continue;
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return;
 			}
-			String[] outputList = tokens.split("\\s+");
-			double memoryPercent = ((Double.parseDouble(outputList[1]) - Double.parseDouble(outputList[6]))
-					/ Double.parseDouble(outputList[1])) * 100;
 
-			// If the memory usage is above 90%, restart the geckodriver and firefox
-			// processes
-			if (memoryPercent > 90.0) {
-				numberOfRestarts++;
-				LOGGER.warn("Restarting process " + numberOfRestarts + "...");
-				LOGGER.info(memoryPercent);
-				processesRestart.set(true);
+			try (BufferedReader buf = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+				String line;
+				StringBuilder output = new StringBuilder();
+
+				while((line = buf.readLine()) != null) {
+					output.append(line).append("\n");
+				}
+
+				String[] lines = output.toString().split("\n");
+				if (lines.length < 2) continue;
+
+				String tokens = lines[1];
+				String[] outputList = tokens.split("\\s+");
+
+				if (outputList.length > 6) {
+					double memoryPercent = ((Double.parseDouble(outputList[1]) - Double.parseDouble(outputList[6])) / Double.parseDouble(outputList[1])) * 100;
+
+					if (memoryPercent > 90.0) {
+						numberOfRestarts++;
+
+						if(!processesRestart.get() && !Thread.currentThread().isInterrupted()) {
+							LOGGER.warn("Restarting process {}...", numberOfRestarts);
+							LOGGER.info("Memory usage: {}%", memoryPercent);
+							processesRestart.set(true);
+						}
+					}
+				}
+			} catch (IOException | NumberFormatException e) {
+				if (!Thread.currentThread().isInterrupted()){
+					LOGGER.error("Error processing memory data: {}", e.getMessage());
+				}
+			} finally {
+				if(p != null){
+					p.destroy();
+				}
 			}
 		}
 	}
