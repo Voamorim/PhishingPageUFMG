@@ -158,25 +158,63 @@ def main():
     window_timeout = 15 
     max_requests = 3 
 
-    for concurrent_browsers in conc_brow:
-        for page_timeout in range(15, 61, 15):
-            for images_timeout in [1, 3, 5, 7]:                
-                # Removes all contents from screenshots/
-                shutil.rmtree(SCREENSHOTS_FOLDER_PATH)
-                os.makedirs(SCREENSHOTS_FOLDER_PATH)
+    def optimizePageTimeout():
+        images_timeout = 20
+        concurrent_browsers = 8
 
-                # Removes all contents from downloads/
-                os.system(f"rm -rf {DOWNLOADS_FOLDER_PATH}/*")
+        pages_timeouts = [5, 10, 15, 20, 25, 30]
 
-                logs_dir = f"{concurrent_browsers}-{page_timeout}-{images_timeout}-{window_timeout}-{max_requests}"
+        for page_timeout in pages_timeouts:
+            # Removes all contents from screenshots/
+            shutil.rmtree(SCREENSHOTS_FOLDER_PATH)
+            os.makedirs(SCREENSHOTS_FOLDER_PATH)
 
-                count = 1
-                while current_filepath.joinpath(Path(logs_dir)).is_dir():
-                    logs_dir = logs_dir.split('(')[0]
-                    logs_dir += f'({count})'
-                    count += 1
+            # Removes all contents from downloads/
+            os.system(f"rm -rf {DOWNLOADS_FOLDER_PATH}/*")
 
-                execute_configuration(current_filepath, logs_dir, concurrent_browsers, page_timeout, images_timeout, window_timeout, max_requests)
+            logs_dir = f"{concurrent_browsers}-{page_timeout}-{images_timeout}-{window_timeout}-{max_requests}"
+
+            count = 1
+            while current_filepath.joinpath(Path(logs_dir)).is_dir():
+                logs_dir = logs_dir.split('(')[0]
+                logs_dir += f'({count})'
+                count += 1
+
+            execute_configuration(current_filepath, logs_dir, concurrent_browsers, page_timeout, images_timeout, window_timeout, max_requests)
+    
+    def optimizeImagesTimeout():
+        page_timeout = 60
+        concurrent_browsers = 8
+
+        images_timeouts = [0, 1, 2, 3, 4, 5, 8, 10]
+
+        for images_timeout in images_timeouts:                
+            # Removes all contents from screenshots/
+            shutil.rmtree(SCREENSHOTS_FOLDER_PATH)
+            os.makedirs(SCREENSHOTS_FOLDER_PATH)
+
+            # Removes all contents from downloads/
+            os.system(f"rm -rf {DOWNLOADS_FOLDER_PATH}/*")
+
+            logs_dir = f"{concurrent_browsers}-{page_timeout}-{images_timeout}-{window_timeout}-{max_requests}"
+
+            count = 1
+            while current_filepath.joinpath(Path(logs_dir)).is_dir():
+                logs_dir = logs_dir.split('(')[0]
+                logs_dir += f'({count})'
+                count += 1
+
+            execute_configuration(current_filepath, logs_dir, concurrent_browsers, page_timeout, images_timeout, window_timeout, max_requests)
+
+            # Removes all contents from screenshots/
+            shutil.rmtree(SCREENSHOTS_FOLDER_PATH)
+            os.makedirs(SCREENSHOTS_FOLDER_PATH)
+
+            # Removes all contents from downloads/
+            os.system(f"rm -rf {DOWNLOADS_FOLDER_PATH}/*")
+
+    optimizePageTimeout()
+    optimizeImagesTimeout()
 
 if __name__ == '__main__':
     main()
