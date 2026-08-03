@@ -1,8 +1,8 @@
 {
-    "concurrentBrowsers": 6,
+    "concurrentBrowsers": 8,
     "pageTimeout": 15,
     "windowTimeout": 5,
-    "imagesLoadTimeout": 1,
+    "imagesLoadTimeout": 2,
     "repositoryPath": "./repo",
     "geckodriverBinPath": "/usr/local/bin/geckodriver",
     "runtimeControllersPath": "runtime_params",

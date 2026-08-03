@@ -192,10 +192,18 @@ public class Process implements Runnable {
             options.setProfile(profile);
 
             options.setProxy(seleniumProxy);
+
             options.addArguments("--headless");
             options.addArguments("--window-size=1920,1080");
+
             options.setBinary("/usr/bin/firefox");
-            options.setPageLoadStrategy(PageLoadStrategy.NORMAL);
+
+            // PageLoadStrategy:
+            //  - EAGER (prefered): returns control to the monitoring framework as soon as 
+            //    the primary HTML document has been loaded.
+            //  - NORMAL: waits for the webpage to complete its loading process before returning 
+            //    control to the application.
+            options.setPageLoadStrategy(PageLoadStrategy.EAGER);
 
             options.merge(capabilities);
 
@@ -268,56 +276,49 @@ public class Process implements Runnable {
                 "    function isVisible(el) {" +
                 "        if (!el) return false;" +
                 "        const style = window.getComputedStyle(el);" +
-                "        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;" +
+                "        if (style.display === 'none' ||" +
+                "            style.visibility === 'hidden' ||" +
+                "            style.opacity === '0')" +
+                "            return false;" +
                 "        const rect = el.getBoundingClientRect();" +
                 "        return (rect.width > 0 && rect.height > 0);" +
                 "    }" +
                 "" +
+                "    // Verifies if an element is inside the viewport" +
                 "    function isInViewport(el) {" +
                 "        if (!isVisible(el)) return false;" +
                 "        const rect = el.getBoundingClientRect();" +
                 "        return (" +
-                "            rect.top < (window.innerHeight || document.documentElement.clientHeight) && " +
-                "            rect.bottom > 0 && " +
-                "            rect.left < (window.innerWidth || document.documentElement.clientWidth) && " +
+                "            rect.top < window.innerHeight &&" + 
+                "            rect.bottom > 0 &&" +
+                "            rect.left < window.innerWidth &&" +
                 "            rect.right > 0" +
                 "        );" +
                 "    }" +
-                "" + // 1. Checks for broken imagens on the screen
-                "    const images = Array.from(document.images);" +
-                "    const imagesValidas = images.every(img => {" +
-                "        if (!isInViewport(img)) return true;" +
                 "" +
+                "    // 1. Checks for broken imagens on the screen" +
+                "    const validImages = Array.from(document.images).every(img => {" +
                 "        if (!img.src && !img.srcset) return true;" +
-                "        if (img.complete) {" +
-                "            if (img.naturalWidth <= 1 || img.naturalHeight <= 1) return true;" +
-                "            return img.naturalWidth > 0;" +
+                "        " +
+                "        if (isInViewport(img)) {" +
+                "            return img.complete && img.naturalWidth > 0;" +
                 "        }" +
-                "        return false;" +
+                "        return true;" +
                 "    });" +
-                "    if (!imagesValidas)" +
-                "        return false;" +
-                "" + // 2. Checks for broken videos/audios on the screen
-                "    const media = Array.from(document.querySelectorAll('video, audio'));" +
-                "    const mediaReady = media.every(m => {" +
+                "    if (!validImages) return false;" +
+                "" +
+                "    // 2. Checks for broken videos/audios on the screen" +
+                "    const mediaReady = Array.from(" +
+                "        document.querySelectorAll('video')" +
+                "    ).every(m => {" +
                 "        if (!isInViewport(m)) return true;" +
-                "        if (m.error) return true;" +
+                "        if (m.error || m.networkState === 3) return false;" +
                 "        if (m.preload === 'none') return true;" +
                 "        return m.readyState >= 2;" +
                 "    });" +
-                "    if (!mediaReady)" +
-                "        return false;" +
-                "" + // 3. Checks for active loader spinners on the screen
-                "    const loaders = document.querySelectorAll('.spinner, .loading, #loader, [class*=\\'loader\\'], [class*=\\'spinner\\']');" +
-                "    for (const loader of loaders) {" +
-                "        if (isInViewport(loader)) {" +
-                "            const rect = loader.getBoundingClientRect();" +
-                "            if (rect.width >= 50 && rect.height >= 50) {" +
-                "                return false;" +
-                "            }" +
-                "        }" +
-                "    }" +
-                "" +  // 4. Checks for active jQuery requests
+                "    if (!mediaReady) return false;" +
+                "" +
+                "    // 3. Checks for active jQuery requests" +
                 "    if (typeof jQuery !== 'undefined' && jQuery.active > 0)" +
                 "        return false;" +
                 "" +
@@ -337,7 +338,12 @@ public class Process implements Runnable {
             }
 
             // Scrolls the page and then takes the screenshot
-            long pageHeight = (long) js.executeScript("return document.body.scrollHeight");
+            long pageHeight = -1; 
+            try{
+                pageHeight = (long) js.executeScript("return document.body.scrollHeight");
+            } catch (Exception e){
+                LOGGER.error("Error getting page scroll height: {}", e.getMessage(), e);
+            }
             int increment = 1080;
             int pos = 0;
             int numScrolls = 0;
@@ -366,85 +372,68 @@ public class Process implements Runnable {
             LOGGER.info("Images Load Timeout completed. Total time spent: " + (timeEndAllImagesTimeout - timeBeginAllImagesTimeout) / 1000.0 + " seconds.");
 
             String verificationJsScript = 
-                "return (function() {" +
+                "return (async function() {" +
                 "    let statusMask = 0;" +
-                "" + 
+                "" + // Verifies if an element is visible
                 "    function isVisible(el) {" +
                 "        if (!el) return false;" +
                 "        const style = window.getComputedStyle(el);" +
-                "        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;" +
+                "        if (style.display === 'none' ||" +
+                "            style.visibility === 'hidden' ||" +
+                "            style.opacity === '0')" +
+                "            return false;" +
                 "        const rect = el.getBoundingClientRect();" +
-                "        return (rect.width > 0 && rect.height > 0);" +
+                "        return rect.width > 0 && rect.height > 0;" +
                 "    }" +
                 "" + // 1. Checks for broken imagens on the screen
                 "    const images = Array.from(document.images);" +
                 "    const imagesValidas = images.every(img => {" +
-                "        if (!img.src && !img.srcset) return true;" + 
-                "        if (img.getAttribute('loading') === 'lazy' && !img.complete) return true;" + 
-                "        if (img.complete) {" +
-                "            if (img.naturalWidth <= 1 || img.naturalHeight <= 1) return true;" +
-                "            return img.naturalWidth > 0;" +
-                "        }" +
-                "        if (!isVisible(img) || img.width <= 1 || img.height <= 1) return true;" +
-                "        return false;" + 
+                "        if (!img.src && !img.srcset) return true;" +
+                "        if (isVisible(img))" +
+                "           return img.complete && img.naturalWidth > 0;" +
+                "        return true;" +
                 "    });" +
-                "    if (!imagesValidas) {" +
-                "        statusMask |= 1;" + 
-                "    }" +
-                "" + // 2. Checks for broken videos/audios on the screen
-                "    const media = Array.from(document.querySelectorAll('video, audio'));" +
+                "" +
+                "    if (!imagesValidas) statusMask |= 1;" +
+                "" + // 2. Checks for broken media (videos/audios) on the screen 
+                "    const media = Array.from(document.querySelectorAll('video'));" +
                 "    const mediaReady = media.every(m => {" +
-                "        if (m.error) return true;" + 
-                "        if (!isVisible(m)) return true;" + 
-                "        if (m.preload === 'none') return true;" + 
-                "        return m.readyState >= 2;" + 
+                "        if (!isVisible(m)) return true;" +
+                "        if (m.error || m.networkState === 3) return false;" +
+                "        if (m.preload === 'none') return true;" +
+                "        return m.readyState >= 2;" +
                 "    });" +
-                "    if (!mediaReady) {" +
-                "        statusMask |= 2;" + 
-                "    }" +
-                "" + // 3. Checks for active loader spinners on the screen
-                "    const loaders = document.querySelectorAll('.spinner, .loading, #loader, [class*=\\'loader\\'], [class*=\\'spinner\\']');" +
-                "    for (const loader of loaders) {" +
-                "        if (isVisible(loader)) {" +
-                "            const rect = loader.getBoundingClientRect();" +
-                "            if (rect.width >= 50 && rect.height >= 50) {" +
-                "                statusMask |= 4;" + 
-                "                break;" +
-                "            }" +
-                "        }" +
-                "    }" +
-                "" +  // 4. Checks for active jQuery requests
-                "    if (typeof jQuery !== 'undefined' && jQuery.active > 0) {" +
-                "        statusMask |= 16;" + 
+                "" +
+                "    if (!mediaReady) statusMask |= 2;" +
+                "" +
+                "" + // 3. Checks for active jQuery requests
+                "    if (typeof jQuery !== 'undefined' &&" +
+                "        jQuery.active > 0) {" +
+                "        statusMask |= 4;" +
                 "    }" +
                 "" +
                 "    return statusMask;" +
-                "})();"; 
+                "})();";
 
             Long resultMask = (Long) js.executeScript(verificationJsScript);
             boolean imagesTimeoutSuccess = false;
 
-            String fail_string = "_timout_fail_";
-
+            String fail_string = "_timout_fail";
             if (resultMask == 0){
                 imagesTimeoutSuccess = true;
-                LOGGER.info("A pagina {} carregou completamente com sucesso!", url);
+                LOGGER.info("The page {} fully loaded successfully!", url);
             } else {
                 if ((resultMask & 1) != 0){
                     fail_string = fail_string + "i_";
-                    LOGGER.info("A pagina {} esta incompleta. Existem imagens quebradas ou incompletas.", url);
+                    LOGGER.info("The page {} is incomplete. There are broken or incomplete images.", url);
                 }
                 if ((resultMask & 2) != 0){
                     fail_string = fail_string + "a_";
-                    LOGGER.info("A pagina {} esta incompleta. Existem elementos de audio/video quebrados na pagina.", url);
+                    LOGGER.info("The page {} is incomplete. There are broken audio/video elements on the page.", url);
                 }
                 if ((resultMask & 4) != 0){
-                    fail_string = fail_string + "l_";
-                    LOGGER.info("A pagina {} esta incompleta. Um elemento de loading/spinner esta visivel na tela.", url);
-                } 
-                if ((resultMask & 8) != 0){
                     fail_string = fail_string + "j_";
-                    LOGGER.info("A pagina {} esta incompleta. O jQuery possui requisicoes AJAX ativas.", url);
+                    LOGGER.info("The page {} is incomplete. jQuery has active AJAX requests.", url);
                 }
             }
 
